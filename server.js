@@ -662,7 +662,28 @@ app.post('/api/trades', verifyToken, async (req, res) => {
       }
     }
 
-    res.status(201).json({ message: 'Trade created', id: tradeId });
+    // Return full trade object with id
+    res.status(201).json({
+      id: tradeId,
+      user_id: req.user.userId,
+      asset,
+      direction,
+      entry,
+      sl,
+      tp: tp || null,
+      exit: exitPrice || null,
+      status: status || 'pending',
+      strategy: strategy || null,
+      emotion: emotion || null,
+      planned_r,
+      actual_r,
+      display_unit,
+      chart_before_url,
+      chart_after_url,
+      reviewed_by: reviewed_by || null,
+      created_at: now,
+      updated_at: now,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   } finally {
