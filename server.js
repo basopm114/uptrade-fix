@@ -258,9 +258,9 @@ app.post('/api/auth/login', async (req, res) => {
 
       // Check if approved
       if (user.status === 'pending') {
-        return res.json({
+        return res.status(403).json({
           status: 'pending',
-          error: 'บัญชีกำลังรออนุมัติ',
+          error: 'บัญชีของคุณกำลังรอการอนุมัติจาก Admin กรุณารอสักครู่',
           code: 'auth/pending-approval',
           user: { id: user.id, email: user.email, name: user.name },
         });
@@ -305,9 +305,9 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Check if approved
     if (user.status === 'pending') {
-      return res.json({
+      return res.status(403).json({
         status: 'pending',
-        error: 'บัญชีกำลังรออนุมัติ',
+        error: 'บัญชีของคุณกำลังรอการอนุมัติจาก Admin กรุณารอสักครู่',
         code: 'auth/pending-approval',
         user: { id: user.id, email: user.email, name: user.name },
       });
