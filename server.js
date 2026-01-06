@@ -741,7 +741,7 @@ app.patch('/api/trades/:id', verifyToken, async (req, res) => {
     };
 
     // Filter out fields that shouldn't be updated by client
-    const blockedFields = ['createdAt', 'created_at', 'updatedAt', 'updated_at', 'userId', 'user_id', 'id'];
+    const blockedFields = ['createdAt', 'created_at', 'updatedAt', 'updated_at', 'userId', 'user_id', 'id', 'date'];
     const filteredUpdates = Object.entries(updates)
       .filter(([key]) => !blockedFields.includes(key))
       .reduce((acc, [key, value]) => {
