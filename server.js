@@ -340,6 +340,9 @@ app.get('/api/users', verifyToken, async (req, res) => {
     return res.status(403).json({ error: 'Admin or coach only' });
   }
 
+  // Check if pagination is requested
+  const usePagination = req.query.page || req.query.limit;
+
   // Query params for pagination and filtering
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 50;
@@ -357,6 +360,12 @@ app.get('/api/users', verifyToken, async (req, res) => {
       if (role) {
         users = users.filter(u => u.role === role);
       }
+      
+      // Backward compatible: return array if no pagination params
+      if (!usePagination) {
+        return res.json(users);
+      }
+      
       const total = users.length;
       const paginatedUsers = users.slice(offset, offset + limit);
       return res.json({
@@ -377,38 +386,56 @@ app.get('/api/users', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     let base = 'SELECT id, name, email, role, status, created_at FROM users';
-    let countBase = 'SELECT COUNT(*) as total FROM users';
     const params = [];
-    const countParams = [];
     const conditions = [];
 
     // Filter by status if provided
     if (status) {
       conditions.push('status = ?');
       params.push(status);
-      countParams.push(status);
     }
 
     // Filter by role if provided
     if (role) {
       conditions.push('role = ?');
       params.push(role);
-      countParams.push(role);
     }
 
     // Add WHERE clause if we have conditions
     if (conditions.length > 0) {
       const whereClause = ` WHERE ${conditions.join(' AND ')}`;
       base += whereClause;
-      countBase += whereClause;
     }
 
-    // Get total count
+    // Add ordering
+    base += ' ORDER BY created_at DESC';
+
+    // Backward compatible: if no pagination params, return all users as array
+    if (!usePagination) {
+      const [users] = await connection.query(base, params);
+      return res.json(users);
+    }
+
+    // With pagination: get count and paginated results
+    let countBase = 'SELECT COUNT(*) as total FROM users';
+    const countParams = [];
+    
+    if (status) {
+      countParams.push(status);
+    }
+    if (role) {
+      countParams.push(role);
+    }
+    
+    if (conditions.length > 0) {
+      countBase += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
     const [countResult] = await connection.query(countBase, countParams);
     const total = countResult[0].total;
 
-    // Add ordering and pagination
-    base += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    // Add pagination
+    base += ' LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const [users] = await connection.query(base, params);
@@ -562,6 +589,9 @@ app.delete('/api/users/:id', verifyToken, async (req, res) => {
 // ==================== TRADES: Get All (with role filtering + pagination) ====================
 app.get('/api/trades', verifyToken, async (req, res) => {
   try {
+    // Check if pagination is requested
+    const usePagination = req.query.page || req.query.limit;
+    
     // Query params for pagination and filtering
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
@@ -577,6 +607,12 @@ app.get('/api/trades', verifyToken, async (req, res) => {
       if (status) {
         trades = trades.filter(t => t.status === status);
       }
+      
+      // Backward compatible: return array if no pagination params
+      if (!usePagination) {
+        return res.json(trades);
+      }
+      
       const total = trades.length;
       const paginatedTrades = trades.slice(offset, offset + limit);
       return res.json({
@@ -605,40 +641,57 @@ app.get('/api/trades', verifyToken, async (req, res) => {
         : null;
 
       let base = 'SELECT * FROM trades';
-      let countBase = 'SELECT COUNT(*) as total FROM trades';
       const params = [];
-      const countParams = [];
       const conditions = [];
 
       // Students see only their trades
       if (req.user.role === 'student') {
         conditions.push('user_id = ?');
         params.push(req.user.userId);
-        countParams.push(req.user.userId);
       }
 
       // Filter by status if provided
       if (status) {
         conditions.push('status = ?');
         params.push(status);
-        countParams.push(status);
       }
 
       // Add WHERE clause if we have conditions
       if (conditions.length > 0) {
         const whereClause = ` WHERE ${conditions.join(' AND ')}`;
         base += whereClause;
-        countBase += whereClause;
       }
 
-      // Get total count for pagination
-      const [countResult] = await connection.query(countBase, countParams);
-      const total = countResult[0].total;
-
-      // Add ordering and pagination
+      // Add ordering
       if (orderCol) {
         base += ` ORDER BY ${orderCol} DESC`;
       }
+
+      // Backward compatible: if no pagination params, return all trades as array
+      if (!usePagination) {
+        const [trades] = await connection.query(base, params);
+        return res.json(trades);
+      }
+
+      // With pagination: get count and paginated results
+      let countBase = 'SELECT COUNT(*) as total FROM trades';
+      const countParams = [];
+      
+      if (req.user.role === 'student') {
+        countParams.push(req.user.userId);
+      }
+      if (status) {
+        countParams.push(status);
+      }
+      
+      if (conditions.length > 0) {
+        countBase += ` WHERE ${conditions.join(' AND ')}`;
+      }
+
+      const [countResult] = await connection.query(countBase, countParams);
+      const total = countResult[0].total;
+
+      // Add pagination
       base += ` LIMIT ? OFFSET ?`;
       params.push(limit, offset);
 
