@@ -760,10 +760,10 @@ app.patch('/api/trades/:id', verifyToken, async (req, res) => {
       ]);
     } catch (err) {
       if (err.code === 'ER_BAD_FIELD_ERROR') {
-        // drop fields that may not exist yet (reviewed_by, chart urls)
+        // drop fields that may not exist yet (reviewed_by, chart urls, feedback)
         const filtered = entries.filter(
-          (e) => !['reviewedBy', 'reviewed_by', 'chartBeforeUrl', 'chart_before_url', 'chartAfterUrl', 'chart_after_url'].includes(e.originalKey) &&
-                 !['reviewed_by', 'chart_before_url', 'chart_after_url'].includes(e.column)
+          (e) => !['reviewedBy', 'reviewed_by', 'chartBeforeUrl', 'chart_before_url', 'chartAfterUrl', 'chart_after_url', 'feedback'].includes(e.originalKey) &&
+                 !['reviewed_by', 'chart_before_url', 'chart_after_url', 'feedback'].includes(e.column)
         );
         const clause = filtered.map((e) => `${e.column} = ?`).join(', ');
         const vals = filtered.map((e) => e.value);
