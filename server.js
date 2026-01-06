@@ -354,7 +354,7 @@ app.get('/api/users', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const [users] = await connection.query(
-      'SELECT id, name, email, role, status, group_name, starting_balance, created_at FROM users'
+      'SELECT id, name, email, role, status, created_at FROM users'
     );
     res.json(users);
   } catch (error) {
