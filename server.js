@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const cron = require('node-cron');
 // Load environment variables from server/.env to avoid picking root .env
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -1009,6 +1010,99 @@ app.delete('/api/trades/:id', verifyToken, async (req, res) => {
     connection.release();
   }
 });
+
+// ==================== ADMIN: Storage Statistics ====================
+app.get('/api/admin/storage-stats', verifyToken, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin only' });
+  }
+
+  if (USE_MOCK_DB) {
+    return res.json({
+      totalImages: 0,
+      totalSizeMB: 0,
+      imagesWithData: 0,
+      message: 'Mock mode - no storage tracking'
+    });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    // Count images and calculate total size
+    const [stats] = await connection.query(`
+      SELECT 
+        COUNT(*) as totalTrades,
+        SUM(CASE WHEN chart_before_url IS NOT NULL AND chart_before_url != '' THEN 1 ELSE 0 END) as planImages,
+        SUM(CASE WHEN chart_after_url IS NOT NULL AND chart_after_url != '' THEN 1 ELSE 0 END) as resultImages,
+        SUM(
+          LENGTH(COALESCE(chart_before_url, '')) + 
+          LENGTH(COALESCE(chart_after_url, ''))
+        ) / 1024 / 1024 as totalSizeMB,
+        COUNT(CASE WHEN created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as recentTrades,
+        COUNT(CASE WHEN created_at <= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as oldTrades
+      FROM trades
+    `);
+
+    const result = stats[0];
+    const totalImages = (result.planImages || 0) + (result.resultImages || 0);
+    
+    res.json({
+      totalTrades: result.totalTrades || 0,
+      totalImages,
+      planImages: result.planImages || 0,
+      resultImages: result.resultImages || 0,
+      totalSizeMB: parseFloat((result.totalSizeMB || 0).toFixed(2)),
+      recentTrades: result.recentTrades || 0,
+      oldTrades: result.oldTrades || 0,
+      retentionDays: 7
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// ==================== CRON JOB: Auto-delete old images ====================
+if (!USE_MOCK_DB && pool) {
+  // Run every day at 3:00 AM (server timezone)
+  cron.schedule('0 3 * * *', async () => {
+    console.log('🗑️  Running scheduled image cleanup...');
+    
+    const connection = await pool.getConnection();
+    try {
+      // Delete images from trades older than 7 days
+      const [result] = await connection.query(`
+        UPDATE trades 
+        SET 
+          chart_before_url = NULL,
+          chart_after_url = NULL,
+          updated_at = NOW()
+        WHERE 
+          created_at <= DATE_SUB(NOW(), INTERVAL 7 DAY)
+          AND (chart_before_url IS NOT NULL OR chart_after_url IS NOT NULL)
+      `);
+      
+      const deletedCount = result.affectedRows || 0;
+      console.log(`✅ Deleted images from ${deletedCount} trades older than 7 days`);
+      
+      // Log stats
+      const [stats] = await connection.query(`
+        SELECT 
+          SUM(LENGTH(COALESCE(chart_before_url, '')) + LENGTH(COALESCE(chart_after_url, ''))) / 1024 / 1024 as currentSizeMB
+        FROM trades
+      `);
+      console.log(`📊 Current storage: ${(stats[0].currentSizeMB || 0).toFixed(2)} MB`);
+      
+    } catch (error) {
+      console.error('❌ Image cleanup failed:', error.message);
+    } finally {
+      connection.release();
+    }
+  });
+  
+  console.log('🕐 Scheduled image cleanup: Every day at 3:00 AM (images older than 7 days)');
+}
 
 // Fallback: serve SPA for non-API routes (but not for asset files)
 app.get('*', (req, res, next) => {
