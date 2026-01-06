@@ -740,7 +740,16 @@ app.patch('/api/trades/:id', verifyToken, async (req, res) => {
       chartAfterUrl: 'chart_after_url',
     };
 
-    let entries = Object.entries(updates).map(([key, value]) => {
+    // Filter out fields that shouldn't be updated by client
+    const blockedFields = ['createdAt', 'created_at', 'updatedAt', 'updated_at', 'userId', 'user_id', 'id'];
+    const filteredUpdates = Object.entries(updates)
+      .filter(([key]) => !blockedFields.includes(key))
+      .reduce((acc, [key, value]) => {
+        acc[key] = value;
+        return acc;
+      }, {});
+
+    let entries = Object.entries(filteredUpdates).map(([key, value]) => {
       const mapped = columnMap[key] || key;
       return { column: mapped, value, originalKey: key };
     });
