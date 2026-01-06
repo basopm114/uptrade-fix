@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UPTrader.Journal</title>
+    <script type="module" crossorigin src="/assets/index-QEPztl5X.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CivUL3YZ.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <style>
+      .pw-toggle {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: transparent;
+        border: none;
+        color: #9fb3ff;
+        font-size: 12px;
+        cursor: pointer;
+        padding: 4px 6px;
+      }
+      .pw-toggle:focus { outline: none; }
+    </style>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const input = document.querySelector('input[type="password"]');
+        if (!input) return;
+        const parent = input.parentElement;
+        if (!parent) return;
+        parent.style.position = 'relative';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'แสดง';
+        btn.className = 'pw-toggle';
+        btn.addEventListener('click', () => {
+          const isPass = input.type === 'password';
+          input.type = isPass ? 'text' : 'password';
+          btn.textContent = isPass ? 'ซ่อน' : 'แสดง';
+        });
+        parent.appendChild(btn);
+      });
+    </script>
+  </body>
+</html>
