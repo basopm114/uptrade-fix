@@ -42,8 +42,8 @@ app.use(
     allowedOrigins.length
       ? {
           origin: (origin, callback) => {
-            // Allow no origin (same-origin), localhost, or if configured
-            if (!origin || origin.startsWith('http://localhost') || allowedOrigins.includes(origin)) {
+            // Allow no origin (same-origin), localhost, Railway domains, or if configured
+            if (!origin || origin.startsWith('http://localhost') || origin.includes('railway.app') || allowedOrigins.includes(origin)) {
               return callback(null, true);
             }
             callback(new Error('Not allowed by CORS'));
