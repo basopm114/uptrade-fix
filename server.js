@@ -340,11 +340,34 @@ app.get('/api/users', verifyToken, async (req, res) => {
     return res.status(403).json({ error: 'Admin or coach only' });
   }
 
+  // Query params for pagination and filtering
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 50;
+  const status = req.query.status; // 'pending', 'active', or undefined for all
+  const role = req.query.role; // 'student', 'coach', 'admin', or undefined for all
+  const offset = (page - 1) * limit;
+
   if (USE_MOCK_DB) {
     // Mock mode
     try {
-      const users = await mockDb.getAllUsers();
-      return res.json(users);
+      let users = await mockDb.getAllUsers();
+      if (status) {
+        users = users.filter(u => u.status === status);
+      }
+      if (role) {
+        users = users.filter(u => u.role === role);
+      }
+      const total = users.length;
+      const paginatedUsers = users.slice(offset, offset + limit);
+      return res.json({
+        users: paginatedUsers,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
     } catch (error) {
       return res.status(500).json({ error: error.message });
     }
@@ -353,10 +376,52 @@ app.get('/api/users', verifyToken, async (req, res) => {
   // Real DB mode
   const connection = await pool.getConnection();
   try {
-    const [users] = await connection.query(
-      'SELECT id, name, email, role, status, created_at FROM users'
-    );
-    res.json(users);
+    let base = 'SELECT id, name, email, role, status, created_at FROM users';
+    let countBase = 'SELECT COUNT(*) as total FROM users';
+    const params = [];
+    const countParams = [];
+    const conditions = [];
+
+    // Filter by status if provided
+    if (status) {
+      conditions.push('status = ?');
+      params.push(status);
+      countParams.push(status);
+    }
+
+    // Filter by role if provided
+    if (role) {
+      conditions.push('role = ?');
+      params.push(role);
+      countParams.push(role);
+    }
+
+    // Add WHERE clause if we have conditions
+    if (conditions.length > 0) {
+      const whereClause = ` WHERE ${conditions.join(' AND ')}`;
+      base += whereClause;
+      countBase += whereClause;
+    }
+
+    // Get total count
+    const [countResult] = await connection.query(countBase, countParams);
+    const total = countResult[0].total;
+
+    // Add ordering and pagination
+    base += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const [users] = await connection.query(base, params);
+    
+    res.json({
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   } finally {
@@ -494,16 +559,35 @@ app.delete('/api/users/:id', verifyToken, async (req, res) => {
   }
 });
 
-// ==================== TRADES: Get All (with role filtering) ====================
+// ==================== TRADES: Get All (with role filtering + pagination) ====================
 app.get('/api/trades', verifyToken, async (req, res) => {
   try {
+    // Query params for pagination and filtering
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const status = req.query.status; // 'pending', 'reviewed', or undefined for all
+    const offset = (page - 1) * limit;
+
     if (USE_MOCK_DB) {
       // Mock mode
       let trades = await mockDb.getAllTrades();
       if (req.user.role === 'student') {
         trades = trades.filter(t => t.userId === req.user.userId);
       }
-      return res.json(trades);
+      if (status) {
+        trades = trades.filter(t => t.status === status);
+      }
+      const total = trades.length;
+      const paginatedTrades = trades.slice(offset, offset + limit);
+      return res.json({
+        trades: paginatedTrades,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
     }
 
     // Real DB mode
@@ -521,20 +605,54 @@ app.get('/api/trades', verifyToken, async (req, res) => {
         : null;
 
       let base = 'SELECT * FROM trades';
+      let countBase = 'SELECT COUNT(*) as total FROM trades';
       const params = [];
+      const countParams = [];
+      const conditions = [];
 
       // Students see only their trades
       if (req.user.role === 'student') {
-        base += ' WHERE user_id = ?';
+        conditions.push('user_id = ?');
         params.push(req.user.userId);
+        countParams.push(req.user.userId);
       }
 
+      // Filter by status if provided
+      if (status) {
+        conditions.push('status = ?');
+        params.push(status);
+        countParams.push(status);
+      }
+
+      // Add WHERE clause if we have conditions
+      if (conditions.length > 0) {
+        const whereClause = ` WHERE ${conditions.join(' AND ')}`;
+        base += whereClause;
+        countBase += whereClause;
+      }
+
+      // Get total count for pagination
+      const [countResult] = await connection.query(countBase, countParams);
+      const total = countResult[0].total;
+
+      // Add ordering and pagination
       if (orderCol) {
         base += ` ORDER BY ${orderCol} DESC`;
       }
+      base += ` LIMIT ? OFFSET ?`;
+      params.push(limit, offset);
 
       const [trades] = await connection.query(base, params);
-      res.json(trades);
+      
+      res.json({
+        trades,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
     } finally {
       connection.release();
     }
@@ -769,10 +887,11 @@ app.patch('/api/trades/:id', verifyToken, async (req, res) => {
       ]);
     } catch (err) {
       if (err.code === 'ER_BAD_FIELD_ERROR') {
-        // drop fields that may not exist yet (reviewed_by, chart urls, feedback)
+        // drop fields that may not exist yet (reviewed_by, chart urls)
+        // Note: feedback column should exist after running database-optimization.sql
         const filtered = entries.filter(
-          (e) => !['reviewedBy', 'reviewed_by', 'chartBeforeUrl', 'chart_before_url', 'chartAfterUrl', 'chart_after_url', 'feedback'].includes(e.originalKey) &&
-                 !['reviewed_by', 'chart_before_url', 'chart_after_url', 'feedback'].includes(e.column)
+          (e) => !['reviewedBy', 'reviewed_by', 'chartBeforeUrl', 'chart_before_url', 'chartAfterUrl', 'chart_after_url'].includes(e.originalKey) &&
+                 !['reviewed_by', 'chart_before_url', 'chart_after_url'].includes(e.column)
         );
         const clause = filtered.map((e) => `${e.column} = ?`).join(', ');
         const vals = filtered.map((e) => e.value);
